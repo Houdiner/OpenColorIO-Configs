@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Планировщик задач</title>
+<script src="https://unpkg.com/react@17/umd/react.development.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js" crossorigin></script>
+<script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--fg);
+  }
+  .header {
+    display: flex;
+    justify-content: space-between;
+    padding: 1rem;
+    background: var(--header-bg);
+    color: var(--fg);
+  }
+  .project {
+    border-bottom: 1px solid #ccc;
+    padding: 0.5rem 1rem;
+  }
+  .task {
+    margin-left: 1rem;
+  }
+  .subtask {
+    margin-left: 2rem;
+  }
+  .done {
+    text-decoration: line-through;
+    opacity: 0.6;
+  }
+  .controls button {
+    margin-left: 0.5rem;
+  }
+  .hidden {
+    display: none;
+  }
+  .timer {
+    margin-top: 1rem;
+  }
+  :root {
+    --bg: #fff;
+    --fg: #000;
+    --header-bg: #f0f0f0;
+  }
+  .dark {
+    --bg: #1e1e1e;
+    --fg: #f0f0f0;
+    --header-bg: #333;
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect } = React;
+function Pomodoro({subtask}) {
+  const [workTime, setWorkTime] = useState(25);
+  const [breakTime, setBreakTime] = useState(5);
+  const [seconds, setSeconds] = useState(workTime * 60);
+  const [running, setRunning] = useState(false);
+  const [onBreak, setOnBreak] = useState(false);
+  useEffect(() => {
+    let timer;
+    if (running) {
+      timer = setInterval(() => {
+        setSeconds(s => {
+          if (s === 0) {
+            if (onBreak) {
+              setOnBreak(false);
+              return workTime * 60;
+            } else {
+              alert('Время отдыха!');
+              setOnBreak(true);
+              return breakTime * 60;
+            }
+          }
+          return s - 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [running, onBreak, workTime, breakTime]);
+  const minutes = String(Math.floor(seconds/60)).padStart(2,'0');
+  const secs = String(seconds%60).padStart(2,'0');
+  return (
+    <div className="timer">
+      <div>{minutes}:{secs}</div>
+      <button onClick={() => setRunning(!running)}>{running ? 'Стоп' : 'Пуск'}</button>
+      <button onClick={() => {setSeconds(workTime*60); setRunning(false); setOnBreak(false);}}>Сброс</button>
+    </div>
+  );
+}
+function Subtask({subtask, toggle, remove}) {
+  return (
+    <div className={"subtask " + (subtask.status ? 'done' : '')}>
+      <input type="checkbox" checked={subtask.status===1} onChange={() => toggle(subtask)} />
+      {subtask.title}
+      <button onClick={() => remove(subtask)}>✕</button>
+      <Pomodoro subtask={subtask} />
+    </div>
+  );
+}
+function Task({task, toggleTask, removeTask, addSubtask, toggleSubtask, removeSubtask, showDone}) {
+  const [newSub, setNewSub] = useState('');
+  return (
+    <div className="task">
+      <div className={task.status? 'done':''}>
+        <input type="checkbox" checked={task.status===1} onChange={() => toggleTask(task)} />
+        {task.title}
+        <button onClick={() => removeTask(task)}>✕</button>
+      </div>
+      {task.subtasks && task.subtasks.filter(st => showDone || st.status===0).map(st => (
+        <Subtask key={st.id} subtask={st} toggle={toggleSubtask} remove={removeSubtask} />
+      ))}
+      <div>
+        <input value={newSub} onChange={e=>setNewSub(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){addSubtask(task,newSub);setNewSub('');}}} placeholder="Новая подзадача" />
+        <button onClick={()=>{addSubtask(task,newSub);setNewSub('');}}>+</button>
+      </div>
+    </div>
+  );
+}
+function Project({project, addTask, toggleTask, removeTask, addSubtask, toggleSubtask, removeSubtask, showDone}) {
+  const [newTask, setNewTask] = useState('');
+  return (
+    <div className="project">
+      <h3>{project.title} <button onClick={() => project.remove(project)}>✕</button></h3>
+      {project.tasks.filter(t => showDone || t.status===0).map(task => (
+        <Task key={task.id} task={task} toggleTask={toggleTask} removeTask={removeTask} addSubtask={addSubtask} toggleSubtask={toggleSubtask} removeSubtask={removeSubtask} showDone={showDone} />
+      ))}
+      <div>
+        <input value={newTask} onChange={e=>setNewTask(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){addTask(project,newTask);setNewTask('');}}} placeholder="Новая задача" />
+        <button onClick={()=>{addTask(project,newTask);setNewTask('');}}>+</button>
+      </div>
+    </div>
+  );
+}
+function App() {
+  const [projects, setProjects] = useState([]);
+  const [newProject, setNewProject] = useState('');
+  const [showDone, setShowDone] = useState(true);
+  const [dark, setDark] = useState(false);
+  const addProject = (title) => {
+    if (!title) return;
+    setProjects(p => [...p, {id: Date.now(), title, tasks: [], remove: removeProject}]);
+  };
+  const removeProject = (project) => {
+    setProjects(p => p.filter(pr => pr.id !== project.id));
+  };
+  const addTask = (project, title) => {
+    if(!title) return;
+    setProjects(prjs => prjs.map(pr => pr.id===project.id ? {...pr, tasks:[...pr.tasks, {id: Date.now(), title, status:0, subtasks:[]}]}:pr));
+  };
+  const removeTask = (task) => {
+    setProjects(prjs => prjs.map(pr => ({...pr, tasks: pr.tasks.filter(t => t.id!==task.id)})));
+  };
+  const toggleTask = (task) => {
+    setProjects(prjs => prjs.map(pr => ({...pr, tasks: pr.tasks.map(t => t.id===task.id ? {...t, status:t.status===1?0:1}:t)})));
+  };
+  const addSubtask = (task, title) => {
+    if(!title) return;
+    setProjects(prjs => prjs.map(pr => ({...pr, tasks: pr.tasks.map(t => t.id===task.id ? {...t, subtasks:[...t.subtasks,{id:Date.now(),title,status:0}]}:t)})));
+  };
+  const removeSubtask = (subtask) => {
+    setProjects(prjs => prjs.map(pr => ({...pr, tasks: pr.tasks.map(t => ({...t, subtasks: t.subtasks.filter(st => st.id!==subtask.id)}))}));
+  };
+  const toggleSubtask = (subtask) => {
+    setProjects(prjs => prjs.map(pr => ({...pr, tasks: pr.tasks.map(t => ({...t, subtasks: t.subtasks.map(st => st.id===subtask.id ? {...st, status: st.status===1?0:1}:st)}))}));
+  };
+  return (
+    <div className={dark ? 'dark' : ''}>
+      <div className="header">
+        <div>Планировщик на день</div>
+        <div>
+          <label><input type="checkbox" checked={showDone} onChange={()=>setShowDone(!showDone)} /> Показывать выполненные</label>
+          <button onClick={()=>setDark(!dark)}>{dark?'🌞':'🌜'}</button>
+        </div>
+      </div>
+      {projects.map(project => (
+        <Project key={project.id} project={project} addTask={addTask} toggleTask={toggleTask} removeTask={removeTask} addSubtask={addSubtask} toggleSubtask={toggleSubtask} removeSubtask={removeSubtask} showDone={showDone} />
+      ))}
+      <div className="controls">
+        <input value={newProject} onChange={e=>setNewProject(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){addProject(newProject);setNewProject('');}}} placeholder="Новый проект" />
+        <button onClick={()=>{addProject(newProject);setNewProject('');}}>Добавить проект</button>
+      </div>
+    </div>
+  );
+}
+ReactDOM.render(<App />, document.getElementById('root'));
+</script>
+</body>
+</html>
